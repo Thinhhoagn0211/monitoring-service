@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package download_filesystem;
+
+option go_package = ".;pb";
+
+import "upload_file.proto";
+
+service DownloadFile {
+    rpc CreateDownload(CreateDownloadRequest) returns (CreateDownloadResponse) {};
+}

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package filesystem_discovery;
+
+option go_package = ".;pb";
+
+import "monitor_file.proto";
+
+message CreateFileDiscoverRequest {
+    string request = 1;
+}
+
+message CreateFileDiscoverResponse {
+    FileAttr files = 2;
+}
+
+message CreateFileChecksumRequest {
+    repeated string filepath = 1;
+}
+
+message CreateFileChecksumResponse {
+    map <string, string> checksums = 1; 
+}
+service FileIndex {
+    rpc ListFiles(CreateFileDiscoverRequest) returns (stream CreateFileDiscoverResponse) {};
+    rpc GetCheckSumFiles(CreateFileChecksumRequest) returns (CreateFileChecksumResponse) {};
+}

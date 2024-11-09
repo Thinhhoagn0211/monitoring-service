@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package filesystem_discovery;
+
+option go_package = ".;pb";
+
+import "google/protobuf/timestamp.proto";
+
+message FileAttr {
+    string id = 1;
+    string path = 2;
+    string name = 3;
+    string type = 4;
+    int64 size = 5;
+    google.protobuf.Timestamp created_at  = 6;
+    google.protobuf.Timestamp accessed_at = 7;
+    google.protobuf.Timestamp modified_at = 8;
+    enum attributes {
+        HIDDEN = 0;
+        READONLY = 1; 
+        READWRITE = 3;
+    }
+    string content = 10;
+}

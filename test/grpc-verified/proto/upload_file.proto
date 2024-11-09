@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package download_filesystem;
+
+option go_package = ".;pb";
+
+message CreateDownloadRequest {
+    string fileUrl = 1;
+}
+
+message CreateDownloadResponse {
+    string filePath = 1;
+}
