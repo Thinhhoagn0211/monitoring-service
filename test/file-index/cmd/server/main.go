@@ -1,19 +1,19 @@
 package main
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
+	db "training/file-index/db/sqlc"
 	"training/file-index/pb"
 	"training/file-index/service"
 
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	_ "github.com/lib/pq"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -53,20 +53,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Set MongoDB URI
-	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
-
-	// Create a context
-	ctx := context.TODO()
-
-	// Connect to MongoDB
-	client, err := mongo.Connect(ctx, clientOptions)
+	// Open a database connection
+	conn, err := sql.Open("postgres", "postgresql://root:secret@localhost:5432/file_indexer?sslmode=disable")
 	if err != nil {
-		panic(fmt.Sprintf("Mongo DB Connect issue %s", err))
+		log.Fatal("cannot connect to db:", err)
 	}
-	collection := client.Database("FileIndexer").Collection("ListFile")
-	fmt.Println("Connect to mongodb server")
-	fileStore := service.NewInMemoryFileStore(client, collection)
+	defer conn.Close()
+
+	// Initialize the store
+	store := db.NewStore(conn)
+
+	fileStore := service.NewInMemoryFileStore(store)
 	fileDiscoveryServer := service.NewFileDiscoveryServer(fileStore)
 	grpcServer := grpc.NewServer(grpc.Creds(tlsCredential))
 	pb.RegisterFileIndexServer(grpcServer, fileDiscoveryServer)

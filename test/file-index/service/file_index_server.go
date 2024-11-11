@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 	"training/file-index/pb"
 	"training/file-index/serializer"
 
-	"github.com/google/uuid"
+	"github.com/360EntSecGroup-Skylar/excelize"
+	"github.com/fumiama/go-docx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -67,32 +68,41 @@ func (server *FileDiscoveryServer) ListFiles(req *pb.CreateFileDiscoverRequest, 
 
 	for {
 		currentFiles := make(FileInfoMap)
-		err := filepath.Walk("C:\\Users\\Raven\\Work", func(path string, info fs.FileInfo, err error) error {
+		// Adjust the directory path as needed (for example, from `request` if specified)
+		err := filepath.Walk("/home/thinh/Desktop/test", func(path string, info fs.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
+			// Skip directories
 			if info.IsDir() {
 				return nil
 			}
-
-			// Lấy thông tin tập tin
 			ext := filepath.Ext(path)
-			stat := info.Sys().(*syscall.Win32FileAttributeData)
 
-			createdAt := timestamppb.New(filetimeToTime(stat.CreationTime))
-			modifiedAt := timestamppb.New(filetimeToTime(stat.LastWriteTime))
-			accessedAt := timestamppb.New(filetimeToTime(stat.LastAccessTime))
+			// Get file timestamps
+			createdAt, modifiedAt, accessedAt := getFileTimes(info)
+
+			var content string
+			if ext == ".docx" {
+				content, _ = readDocxContent(path)
+				fmt.Println("content", content)
+			} else if ext == ".xlsx" {
+				content, _ = readExcelContent(path)
+				fmt.Println("content", content)
+			} else if ext == ".pptx" {
+				content, _ = readPPTXContent(path)
+				fmt.Println("content", content)
+			}
 
 			fileAttr := &pb.FileAttr{
-				Id:         uuid.New().String(),
 				Path:       path,
 				Name:       info.Name(),
 				Type:       ext,
 				Size:       info.Size(),
-				CreatedAt:  createdAt,
-				ModifiedAt: modifiedAt,
-				AccessedAt: accessedAt,
-				Content:    "",
+				CreatedAt:  timestamppb.New(createdAt),
+				ModifiedAt: timestamppb.New(modifiedAt),
+				AccessedAt: timestamppb.New(accessedAt),
+				Content:    content,
 			}
 			currentFiles[path] = fileAttr
 			// Lưu vào CSDL
@@ -136,9 +146,74 @@ func (server *FileDiscoveryServer) ListFiles(req *pb.CreateFileDiscoverRequest, 
 	}
 }
 
-// Convert syscall.Filetime to time.Time
-func filetimeToTime(ft syscall.Filetime) time.Time {
-	return time.Unix(0, ft.Nanoseconds()).UTC()
+func readDocxContent(filePath string) (string, error) {
+	readFile, err := os.Open(filePath)
+	if err != nil {
+		panic(err)
+	}
+	fileinfo, err := readFile.Stat()
+	if err != nil {
+		panic(err)
+	}
+	var content string
+	size := fileinfo.Size()
+	doc, err := docx.Parse(readFile, size)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Plain text:")
+	for _, it := range doc.Document.Body.Items {
+		switch it.(type) {
+		case *docx.Paragraph, *docx.Table: // printable
+			switch v := it.(type) {
+			case *docx.Paragraph:
+				content += v.String()
+			case *docx.Table:
+				content += v.String()
+			}
+		}
+	}
+	return content, nil
+}
+
+func readExcelContent(filePath string) (string, error) {
+	// Open the Excel file
+	f, err := excelize.OpenFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %w", err)
+	}
+
+	// Extract content from the first sheet
+	var content string
+	for _, sheetName := range f.GetSheetMap() {
+		rows := f.GetRows(sheetName)
+		for _, row := range rows {
+			for _, cell := range row {
+				content += cell + " "
+			}
+			content += "\n"
+		}
+	}
+
+	return content, nil
+}
+
+func readPPTXContent(filePath string) (string, error) {
+	// Open the PowerPoint file
+	var content string
+
+	return content, nil
+}
+
+// Helper function to get created time, modified time, and accessed time for a file
+func getFileTimes(info os.FileInfo) (createdAt, modifiedAt, accessedAt time.Time) {
+	modifiedAt = info.ModTime() // Modified time from FileInfo
+
+	// Assume createdAt and accessedAt are set to modified time as placeholders
+	createdAt, accessedAt = modifiedAt, modifiedAt
+
+	// You may use OS-specific logic here to retrieve exact created and accessed times
+	return createdAt, modifiedAt, accessedAt
 }
 
 func contextError(ctx context.Context) error {
