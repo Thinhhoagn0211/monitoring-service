@@ -36,6 +36,7 @@ func (store *InMemoryFileStore) Save(files *pb.FileAttr) error {
 	ctx := context.Background()
 	arg := db.InsertFileParams{
 		Name:       files.Name,
+		Path:       files.Path,
 		Extension:  files.Type,
 		Size:       files.Size,
 		Attributes: files.Path,

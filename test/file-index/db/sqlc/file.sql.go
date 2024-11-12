@@ -15,20 +15,22 @@ INSERT INTO file (
   name,
   extension,
   size,
+  path,
   attributes,
   content,
   created_at,
   modified_at,
   accessed_at
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8
-) RETURNING id, name, extension, size, created_at, modified_at, accessed_at, attributes, content
+  $1, $2, $3, $4, $5, $6, $7, $8, $9
+) RETURNING id, name, extension, size, path, created_at, modified_at, accessed_at, attributes, content
 `
 
 type InsertFileParams struct {
 	Name       string    `json:"name"`
 	Extension  string    `json:"extension"`
 	Size       int64     `json:"size"`
+	Path       string    `json:"path"`
 	Attributes string    `json:"attributes"`
 	Content    string    `json:"content"`
 	CreatedAt  time.Time `json:"created_at"`
@@ -41,6 +43,7 @@ func (q *Queries) InsertFile(ctx context.Context, arg InsertFileParams) (File, e
 		arg.Name,
 		arg.Extension,
 		arg.Size,
+		arg.Path,
 		arg.Attributes,
 		arg.Content,
 		arg.CreatedAt,
@@ -53,6 +56,7 @@ func (q *Queries) InsertFile(ctx context.Context, arg InsertFileParams) (File, e
 		&i.Name,
 		&i.Extension,
 		&i.Size,
+		&i.Path,
 		&i.CreatedAt,
 		&i.ModifiedAt,
 		&i.AccessedAt,

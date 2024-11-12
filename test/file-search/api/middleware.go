@@ -2,7 +2,7 @@ package api
 
 import (
 	"errors"
-	"filesearch/token"
+	"training/file-search/token"
 
 	"net/http"
 	"strings"

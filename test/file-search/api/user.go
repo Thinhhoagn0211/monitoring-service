@@ -1,13 +1,14 @@
 package api
 
 import (
-	db "filesearch/db/sqlc"
-	"filesearch/model"
-	"filesearch/util"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
+	db "training/file-search/db/sqlc"
+	"training/file-search/model"
+	"training/file-search/util"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
@@ -24,12 +25,12 @@ type createUserRequest struct {
 }
 
 type updateUserRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
-	Phone    string `json:"phone"`
-	FullName string `json:"full_name" binding:"required"`
-	Avatar   string `json:"avatar" binding:"required"`
-	Role     string `json:"role" binding:"required"`
+	Email    sql.NullString `json:"email" binding:"required,email"`
+	Password sql.NullString `json:"password" binding:"required,min=6"`
+	Phone    sql.NullString `json:"phone"`
+	FullName sql.NullString `json:"full_name" binding:"required"`
+	Avatar   sql.NullString `json:"avatar" binding:"required"`
+	Role     sql.NullString `json:"role" binding:"required"`
 }
 
 type Meta struct {
@@ -63,7 +64,6 @@ func (server *Server) createUser(ctx *gin.Context) {
 		return
 	}
 	arg := db.CreateUserParams{
-		ID:           int32(util.GenerateRandomID()),
 		Email:        req.Email,
 		Username:     req.Username,
 		Password:     req.Password,
@@ -73,6 +73,7 @@ func (server *Server) createUser(ctx *gin.Context) {
 		Avatar:       req.Avatar,
 		State:        int64(model.UserStateActive),
 		Role:         req.Role,
+		CreatedAt:    time.Now(),
 	}
 
 	user, err := server.store.CreateUser(ctx, arg)
@@ -112,7 +113,7 @@ func (server *Server) getUsers(ctx *gin.Context) {
 	if order == "asc" {
 		// Fetch users with the search term and state filter
 		users, err := server.store.GetUsersAsc(ctx, db.GetUsersAscParams{
-			Column1: &searchTerm,
+			Column1: util.NullableString(searchTerm),
 			Limit:   int32(limit),
 			Offset:  int32(offset),
 			Column4: orderby,
@@ -126,7 +127,7 @@ func (server *Server) getUsers(ctx *gin.Context) {
 	} else {
 		// Fetch users with the search term and state filter
 		users, err := server.store.GetUsersDesc(ctx, db.GetUsersDescParams{
-			Column1: &searchTerm,
+			Column1: util.NullableString(searchTerm),
 			Limit:   int32(limit),
 			Offset:  int32(offset),
 			Column4: orderby,
@@ -166,19 +167,19 @@ func (server *Server) getUserById(ctx *gin.Context) {
 }
 func (server *Server) updateUser(ctx *gin.Context) {
 	var req updateUserRequest
-	hashedPassword, err := util.HashPassword(req.Password)
+	hashedPassword, err := util.HashPassword(req.Password.String)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, errorResponse(err))
 		return
 	}
 	arg := db.UpdateUserParams{
-		Fullname:     &req.FullName,
-		Email:        &req.Email,
-		Phone:        &req.Phone,
-		Password:     &req.Password,
-		Avatar:       &req.Avatar,
-		Role:         &req.Role,
-		PasswordHash: &hashedPassword,
+		Fullname:     req.FullName,
+		Email:        req.Email,
+		Phone:        req.Phone,
+		Password:     req.Password,
+		Avatar:       req.Avatar,
+		Role:         req.Role,
+		PasswordHash: util.NullableString(hashedPassword),
 	}
 	user, err := server.store.UpdateUser(ctx, arg)
 	if err != nil {
@@ -187,6 +188,7 @@ func (server *Server) updateUser(ctx *gin.Context) {
 	}
 	ctx.JSON(http.StatusOK, user)
 }
+
 func (server *Server) deleteUser(ctx *gin.Context) {
 	id := ctx.Param("id")
 	idInt, err := strconv.Atoi(id)

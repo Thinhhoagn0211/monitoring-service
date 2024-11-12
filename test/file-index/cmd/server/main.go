@@ -54,7 +54,7 @@ func main() {
 		log.Fatal(err)
 	}
 	// Open a database connection
-	conn, err := sql.Open("postgres", "postgresql://root:secret@localhost:5432/file_indexer?sslmode=disable")
+	conn, err := sql.Open("postgres", "postgresql://root:secret@localhost:5432/every_pg?sslmode=disable")
 	if err != nil {
 		log.Fatal("cannot connect to db:", err)
 	}

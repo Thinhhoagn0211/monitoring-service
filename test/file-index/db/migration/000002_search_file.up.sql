@@ -3,6 +3,7 @@ CREATE TABLE "file" (
   "name" VARCHAR(50) UNIQUE NOT NULL,
   "extension" VARCHAR(10) NOT NULL,
   "size" bigint NOT NULL,
+  "path" VARCHAR(255) NOT NULL,
   "created_at" timestamptz NOT NULL DEFAULT (now()),
   "modified_at" timestamptz NOT NULL DEFAULT (now()),
   "accessed_at" timestamptz NOT NULL DEFAULT (now()),

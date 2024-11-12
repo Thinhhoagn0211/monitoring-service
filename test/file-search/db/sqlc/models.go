@@ -8,6 +8,18 @@ import (
 	"time"
 )
 
+type File struct {
+	ID         int32     `json:"id"`
+	Name       string    `json:"name"`
+	Extension  string    `json:"extension"`
+	Size       int64     `json:"size"`
+	CreatedAt  time.Time `json:"created_at"`
+	ModifiedAt time.Time `json:"modified_at"`
+	AccessedAt time.Time `json:"accessed_at"`
+	Attributes string    `json:"attributes"`
+	Content    string    `json:"content"`
+}
+
 type User struct {
 	ID           int32     `json:"id"`
 	Email        string    `json:"email"`

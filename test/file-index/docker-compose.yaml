@@ -1,10 +1,14 @@
 services:
-  mongodb:
-    image: mongo
-    restart: always
+  server:
+    build:
+      context: ./deployment
+      dockerfile: Dockerfile.grpc.server
     ports:
-      - '27017:27017'
-    volumes:
-      - dbdata6:/data/db
-volumes:
-  dbdata6:
+      - "8080:8080"
+
+  client:
+    build:
+      context: ./deployment
+      dockerfile: Dockerfile.grpc.client
+    depends_on:
+      - server

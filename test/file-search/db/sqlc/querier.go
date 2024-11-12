@@ -11,6 +11,7 @@ import (
 type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteUser(ctx context.Context, arg DeleteUserParams) (User, error)
+	GetFile(ctx context.Context, arg GetFileParams) ([]string, error)
 	GetUserById(ctx context.Context, id int32) (User, error)
 	GetUsersAsc(ctx context.Context, arg GetUsersAscParams) ([]User, error)
 	GetUsersDesc(ctx context.Context, arg GetUsersDescParams) ([]User, error)

@@ -1,0 +1,20 @@
+FROM golang:latest
+
+# Set destination for COPY
+WORKDIR /grpc-server
+# Download Go modules
+COPY go.mod go.sum ./
+
+RUN go mod download
+
+# Copy the source code. Note the slash at the end, as explained in
+# https://docs.docker.com/reference/dockerfile/#copy
+COPY . ./
+
+# Build
+RUN go build -o /grpc-server
+
+EXPOSE 8080
+
+# Run
+CMD ["/grpc-server"]

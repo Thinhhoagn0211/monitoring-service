@@ -1,13 +1,12 @@
 package main
 
 import (
-	"context"
-	"filesearch/api"
-	"filesearch/util"
+	"database/sql"
+	"training/file-search/api"
+	"training/file-search/util"
 
-	db "filesearch/db/sqlc"
+	db "training/file-search/db/sqlc"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 )
 
@@ -17,13 +16,13 @@ func main() {
 	if err != nil {
 		log.Fatal().Msg("cannot load config")
 	}
-	ctx := context.Background()
 
-	connPool, err := pgxpool.New(ctx, config.DBSource)
+	conn, err := sql.Open(config.DBDriver, config.DBSource)
 	if err != nil {
-		log.Fatal().Err(err).Msg("cannot connect to db")
+		log.Fatal().Msg("cannot connect to db")
 	}
-	store := db.NewStore(connPool)
+	defer conn.Close()
+	store := db.NewStore(conn)
 	runGinServer(config, store)
 }
 

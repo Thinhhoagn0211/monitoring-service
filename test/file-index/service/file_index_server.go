@@ -9,12 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 	"training/file-index/pb"
 	"training/file-index/serializer"
+	"training/file-index/util"
 
-	"github.com/360EntSecGroup-Skylar/excelize"
 	"github.com/fumiama/go-docx"
+	"github.com/xuri/excelize/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -38,6 +40,7 @@ func NewFileDiscoveryServer(fileStore FileStore) *FileDiscoveryServer {
 func (server *FileDiscoveryServer) GetCheckSumFiles(ctx context.Context, req *pb.CreateFileChecksumRequest) (*pb.CreateFileChecksumResponse, error) {
 	filepaths := req.GetFilepath()
 	var res = &pb.CreateFileChecksumResponse{}
+
 	for _, filepath := range filepaths {
 		filename := strings.Split(filepath, "/")
 		log.Printf("receive a filepath checksum request with path :%s\n", filename[len(filename)-1])
@@ -67,107 +70,145 @@ func (server *FileDiscoveryServer) ListFiles(req *pb.CreateFileDiscoverRequest, 
 	fmt.Printf("Receive request to list all files in computer %s\n", request)
 
 	for {
-		currentFiles := make(FileInfoMap)
-		// Adjust the directory path as needed (for example, from `request` if specified)
-		err := filepath.Walk("/home/thinh/Desktop/test", func(path string, info fs.FileInfo, err error) error {
+		drives := util.GetAvailableDrives()
+		for _, drive := range drives {
+			currentFiles := make(FileInfoMap)
+			// Adjust the directory path as needed (for example, from `request` if specified)
+			err := filepath.Walk(drive, func(path string, info fs.FileInfo, err error) error {
+				if err != nil {
+					if os.IsPermission(err) {
+						fmt.Printf("Permission denied: %s\n", path)
+						return nil
+					}
+					return err
+				}
+				// Skip directories
+				if info.IsDir() {
+					return nil
+				}
+				ext := filepath.Ext(path)
+
+				// Get file timestamps
+				createdAt, modifiedAt, accessedAt, _ := getFileTimes(path)
+
+				var content string
+				if ext == ".docx" {
+					content, err = readDocxContent(path)
+					if err != nil {
+						fmt.Printf("Failed to read .docx file: %s, error: %v\n", path, err)
+						return nil // Skip to the next file
+					}
+					fmt.Println("content", content)
+				} else if ext == ".xlsx" {
+					content, err = readExcelContent(path)
+					if err != nil {
+						fmt.Printf("Failed to read .xlsx file: %s, error: %v\n", path, err)
+						return nil // Skip to the next file
+					}
+					fmt.Println("content", content)
+				} else if ext == ".pptx" {
+					content, err = readPPTXContent(path)
+					if err != nil {
+						fmt.Printf("Failed to read .pptx file: %s, error: %v\n", path, err)
+						return nil // Skip to the next file
+					}
+					fmt.Println("content", content)
+				}
+				var attribute string
+				flagAttributes, _ := IsHiddenFile(path)
+				if flagAttributes {
+					attribute = "Hidden"
+				} else {
+					attribute = "Read Only"
+				}
+				fileAttr := &pb.FileAttr{
+					Path:       path,
+					Name:       info.Name(),
+					Type:       ext,
+					Size:       info.Size(),
+					CreatedAt:  timestamppb.New(createdAt),
+					ModifiedAt: timestamppb.New(modifiedAt),
+					AccessedAt: timestamppb.New(accessedAt),
+					Attributes: attribute,
+					Content:    content,
+				}
+				currentFiles[path] = fileAttr
+				// Lưu vào CSDL
+				if _, exists := fileInfoCache[path]; !exists {
+					// Tập tin mới
+					fmt.Println("Create file")
+					if err := server.fileStore.Save(fileAttr); err != nil {
+						return err
+					}
+				}
+
+				res := &pb.CreateFileDiscoverResponse{
+					Files: fileAttr,
+				}
+				if err := stream.Send(res); err != nil {
+					return err
+				}
+
+				return nil
+			})
+
 			if err != nil {
 				return err
 			}
-			// Skip directories
-			if info.IsDir() {
-				return nil
-			}
-			ext := filepath.Ext(path)
 
-			// Get file timestamps
-			createdAt, modifiedAt, accessedAt := getFileTimes(info)
-
-			var content string
-			if ext == ".docx" {
-				content, _ = readDocxContent(path)
-				fmt.Println("content", content)
-			} else if ext == ".xlsx" {
-				content, _ = readExcelContent(path)
-				fmt.Println("content", content)
-			} else if ext == ".pptx" {
-				content, _ = readPPTXContent(path)
-				fmt.Println("content", content)
-			}
-
-			fileAttr := &pb.FileAttr{
-				Path:       path,
-				Name:       info.Name(),
-				Type:       ext,
-				Size:       info.Size(),
-				CreatedAt:  timestamppb.New(createdAt),
-				ModifiedAt: timestamppb.New(modifiedAt),
-				AccessedAt: timestamppb.New(accessedAt),
-				Content:    content,
-			}
-			currentFiles[path] = fileAttr
-			// Lưu vào CSDL
-			if _, exists := fileInfoCache[path]; !exists {
-				// Tập tin mới
-				fmt.Println("Create file")
-				if err := server.fileStore.Save(fileAttr); err != nil {
-					return err
+			// Kiểm tra tập tin đã bị xóa
+			for path, fileAttr := range fileInfoCache {
+				if _, exists := currentFiles[path]; !exists {
+					// Tập tin đã bị xóa
+					fmt.Println("delete path ", fileAttr)
+					if err := server.fileStore.Delete(fileAttr.Name); err != nil {
+						return err
+					}
 				}
 			}
 
-			res := &pb.CreateFileDiscoverResponse{
-				Files: fileAttr,
-			}
-			if err := stream.Send(res); err != nil {
-				return err
-			}
-
-			return nil
-		})
-
-		if err != nil {
-			return err
+			// Cập nhật cache
+			fileInfoCache = currentFiles
 		}
-
-		// Kiểm tra tập tin đã bị xóa
-		for path, fileAttr := range fileInfoCache {
-			if _, exists := currentFiles[path]; !exists {
-				// Tập tin đã bị xóa
-				fmt.Println("delete path ", fileAttr)
-				if err := server.fileStore.Delete(fileAttr.Name); err != nil {
-					return err
-				}
-			}
-		}
-
-		// Cập nhật cache
-		fileInfoCache = currentFiles
 
 		time.Sleep(5 * time.Second) // Quét lại sau 5 giây
 	}
 }
 
+func IsHiddenFile(filename string) (bool, error) {
+	pointer, err := syscall.UTF16PtrFromString(filename)
+	if err != nil {
+		return false, err
+	}
+	attributes, err := syscall.GetFileAttributes(pointer)
+	if err != nil {
+		return false, err
+	}
+	return attributes&syscall.FILE_ATTRIBUTE_HIDDEN != 0, nil
+}
+
 func readDocxContent(filePath string) (string, error) {
 	readFile, err := os.Open(filePath)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 	fileinfo, err := readFile.Stat()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
+
 	var content string
 	size := fileinfo.Size()
 	doc, err := docx.Parse(readFile, size)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	fmt.Println("Plain text:")
 	for _, it := range doc.Document.Body.Items {
 		switch it.(type) {
 		case *docx.Paragraph, *docx.Table: // printable
 			switch v := it.(type) {
 			case *docx.Paragraph:
-				content += v.String()
+				content += v.String() + "\n"
 			case *docx.Table:
 				content += v.String()
 			}
@@ -182,40 +223,49 @@ func readExcelContent(filePath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
-
-	// Extract content from the first sheet
-	var content string
+	defer f.Close()
+	var contentBuilder strings.Builder
 	for _, sheetName := range f.GetSheetMap() {
-		rows := f.GetRows(sheetName)
+		rows, err := f.GetRows(sheetName)
+		if err != nil {
+			return "", fmt.Errorf("failed to get rows: %w", err)
+		}
 		for _, row := range rows {
-			for _, cell := range row {
-				content += cell + " "
+			for _, col := range row {
+				contentBuilder.WriteString(col)
+				contentBuilder.WriteString("\t")
 			}
-			content += "\n"
+			contentBuilder.WriteString("\n")
 		}
 	}
 
+	content := contentBuilder.String()
 	return content, nil
 }
 
 func readPPTXContent(filePath string) (string, error) {
-	// Open the PowerPoint file
-	var content string
-
-	return content, nil
+	// Convert .pptx file to text
+	// res, err := docconv.ConvertPath(filePath)
+	// if err != nil {
+	// 	return "", err
+	// }
+	// content := res.Body
+	return "content", nil
 }
 
-// Helper function to get created time, modified time, and accessed time for a file
-func getFileTimes(info os.FileInfo) (createdAt, modifiedAt, accessedAt time.Time) {
-	modifiedAt = info.ModTime() // Modified time from FileInfo
+func getFileTimes(path string) (createdAt, modifiedAt, accessedAt time.Time, err error) {
+	// Get file information
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, time.Time{}, time.Time{}, err
+	}
+	stat := fileInfo.Sys().(*syscall.Win32FileAttributeData)
+	createdAt = time.Unix(0, stat.CreationTime.Nanoseconds())
+	accessedAt = time.Unix(0, stat.LastAccessTime.Nanoseconds())
+	modifiedAt = fileInfo.ModTime()
 
-	// Assume createdAt and accessedAt are set to modified time as placeholders
-	createdAt, accessedAt = modifiedAt, modifiedAt
-
-	// You may use OS-specific logic here to retrieve exact created and accessed times
-	return createdAt, modifiedAt, accessedAt
+	return createdAt, modifiedAt, accessedAt, nil
 }
-
 func contextError(ctx context.Context) error {
 	switch ctx.Err() {
 	case context.Canceled:

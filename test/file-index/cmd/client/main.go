@@ -12,9 +12,7 @@ import (
 	"training/file-index/pb"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/status"
 )
 
 func loadTLSCredentials() (credentials.TransportCredentials, error) {
@@ -44,24 +42,8 @@ func loadTLSCredentials() (credentials.TransportCredentials, error) {
 	return credentials.NewTLS(config), nil
 }
 
-type arrayFlags []string
-
-// String is an implementation of the flag.Value interface
-func (i *arrayFlags) String() string {
-	return fmt.Sprintf("%v", *i)
-}
-
-// Set is an implementation of the flag.Value interface
-func (i *arrayFlags) Set(value string) error {
-	*i = append(*i, value)
-	return nil
-}
-
-var fileUrl arrayFlags
-
 func main() {
 	serverAddress := flag.String("address", "", "the server address")
-	flag.Var(&fileUrl, "paths", "Some description for this param.")
 	flag.Parse()
 	log.Printf("Dial server %s", *serverAddress)
 
@@ -76,38 +58,19 @@ func main() {
 	}
 
 	fileSearcherClient := pb.NewFileIndexClient(conn)
-	req := &pb.CreateFileChecksumRequest{
-		Filepath: fileUrl,
-	}
-	go checksumFile(fileSearcherClient, req)
 
 	searchFile(fileSearcherClient)
-
-	// log.Printf("checksum file from url %s and name file is %s", fileUrl, res.Checksums)
-}
-
-func checksumFile(fileSearcherClient pb.FileIndexClient, req *pb.CreateFileChecksumRequest) (*pb.CreateFileChecksumResponse, error) {
-	res, err := fileSearcherClient.GetCheckSumFiles(context.Background(), req)
-	if err != nil {
-		st, ok := status.FromError(err)
-		if ok && st.Code() == codes.AlreadyExists {
-			log.Print("file already exists")
-		} else {
-			log.Fatal("cannot checksum file: ", err)
-		}
-	}
-	return res, err
 }
 
 func searchFile(fileClient pb.FileIndexClient) {
 	ctx := context.Background()
 
 	req := &pb.CreateFileDiscoverRequest{
-		Request: "hello",
+		Request: "Start search file of system",
 	}
 	stream, err := fileClient.ListFiles(ctx, req)
 	if err != nil {
-		log.Fatal("cannot search laptop: ", err)
+		log.Fatal("cannot search file: ", err)
 	}
 
 	for {
@@ -117,10 +80,10 @@ func searchFile(fileClient pb.FileIndexClient) {
 		}
 
 		if err != nil {
-			log.Fatal("cannot receive response: %v", err)
+			log.Fatal("cannot receive response: ", err)
 		}
 
-		res.GetFiles()
-		// log.Printf("- found: %s", file)
+		file := res.GetFiles()
+		log.Printf("- found: %s", file)
 	}
 }
